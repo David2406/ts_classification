@@ -1,23 +1,28 @@
 import numpy as np
 import pandas as pd
 import os
+from src.config import init_config_options
 from src.utils import one_vs_rest_label
 from src.plot import plot_roc_curve
 from src.statistics import roc_curves_info, format_binary_classification
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
+###########################################################################
+##################### CONFIG PARAMETER LOADING ############################
+###########################################################################
+
+conf, work_dir, save_dir = init_config_options(config_file_path = './configs/simple_classifier.json')
+save_data = conf['save_data']
+
 ###############################################################################
 ##################### DATA LOADING & PREPROCESSING ############################
 ###############################################################################
 
-save_results_folder_path = '/home/david/Dev/volta/saved_results/'
-save_data_folder_path = '/home/david/Dev/volta/saved_data/'
-
-X_t = np.load(os.path.join(save_data_folder_path, 'patient_reduced_coords.npy'))
+X_t = np.load(os.path.join(save_data, 'patient_reduced_coords.npy'))
 X = np.transpose(X_t)
 
-ECG_COL_MAP = pd.read_pickle(os.path.join(save_data_folder_path, 'ECG_COL_MAP.pkl'))
+ECG_COL_MAP = pd.read_pickle(os.path.join(save_data, 'ECG_COL_MAP.pkl'))
 ECG_COL_MAP['sinus_dummy'] = ECG_COL_MAP['rhy_grp'].apply(one_vs_rest_label)
 y = ECG_COL_MAP[['id', 'sinus_dummy']].drop_duplicates()['sinus_dummy'].to_numpy()
 
@@ -67,7 +72,7 @@ plot_roc_curve(fpr,
                label_colors,
                save_plot = True,
                show_plot = True,
-               save_filename = os.path.join(save_results_folder_path,
+               save_filename = os.path.join(save_dir,
                                             'rom_analysis',
                                             'simple_classifier_roc.jpeg'))
 

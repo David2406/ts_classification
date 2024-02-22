@@ -4,6 +4,7 @@ import os
 import torch
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from src.config import init_config_options
 from src.plot import plot_roc_curve
 from src.rocket_doe import rocket_ks_dilations
 from src.statistics import roc_curves_info
@@ -17,31 +18,36 @@ from src.rocket_classifier import RocketClassifier
 # Journal : Data Mining and Knowledge Discovery
 # Year    : 2020
 
+###########################################################################
+##################### CONFIG PARAMETER LOADING ############################
+###########################################################################
+
+conf, work_dir, save_dir = init_config_options(config_file_path = './configs/rocket_classifier.json')
+save_data = conf['save_data']
+
 ###############################################################################
 ##################### DATA LOADING & PREPROCESSING ############################
 ###############################################################################
 
-save_results_folder_path = '/home/david/Dev/volta/saved_results/'
-save_data_folder_path = '/home/david/Dev/volta/saved_data/'
-
-patient_avg_ts = torch.load(os.path.join(save_data_folder_path,
-                                         'patient_average_embeddings.pt'),
-                            weights_only = True)
+filt_norm_recds = torch.load(os.path.join(save_data,
+                                          'filt_norm_recds.pt'),
+                             weights_only = True)
 
 nb_pts = 5000
 nb_leads = 12
 nb_patients = 200
-X = torch.reshape(patient_avg_ts, (nb_leads, nb_pts, nb_patients))
-X = torch.transpose(X, 0, 2)
-X = torch.transpose(X, 1, 2)
 
-torch.save(X, os.path.join(save_data_folder_path, 'patient_average_ts.pt'))
+X = torch.transpose(filt_norm_recds, 0, 1)
+X = torch.reshape(X, (nb_leads, nb_patients, nb_pts))
+X = torch.transpose(X, 0, 1)
+
+torch.save(X, os.path.join(save_data, 'reshaped_filt_norm_recds.pt'))
 
 ###############################################################################
 ######################## BUILDING LABELS TENSOR ###############################
 ###############################################################################
 
-ECG_COL_MAP = pd.read_pickle(os.path.join(save_data_folder_path, 'ECG_COL_MAP.pkl'))
+ECG_COL_MAP = pd.read_pickle(os.path.join(save_data, 'ECG_COL_MAP.pkl'))
 ECG_COL_MAP['sinus_dummy'] = ECG_COL_MAP['rhy_grp'].apply(one_vs_rest_label)
 
 sinus_dummy = ECG_COL_MAP[['id', 'sinus_dummy']].drop_duplicates()['sinus_dummy'].to_numpy()
@@ -59,8 +65,8 @@ nb_ks = 1000
 ks_min = 3
 ks_max = int(nb_pts / 2)
 
-kernel_sizes_file_path = os.path.join(save_data_folder_path, 'rocket_kernel_sizes.pt')
-dilations_file_path = os.path.join(save_data_folder_path, 'rocket_dilations.pt')
+kernel_sizes_file_path = os.path.join(save_data, 'rocket_kernel_sizes.pt')
+dilations_file_path = os.path.join(save_data, 'rocket_dilations.pt')
 
 kernel_sizes, dilations = rocket_ks_dilations(ts_length = nb_pts,
                                               nb_ks = nb_ks,
@@ -78,7 +84,7 @@ rfeats_builder = RocketFeatures(kernel_sizes = kernel_sizes,
                                 weight_init_bounds = [-1., 1.],
                                 bias_init_params = [0., 1.])
 
-rocket_features_file_path = os.path.join(save_data_folder_path, 'rocket_features.pt')
+rocket_features_file_path = os.path.join(save_data, 'rocket_features.pt')
 rfeats = rfeats_builder.build_features(X,
                                        print_freq = 100,
                                        save_freq = 20,
@@ -96,7 +102,7 @@ norm_rfeats = torch.nn.BatchNorm1d(2 * ker_cut, eps = 1e-05, momentum = 0.1, aff
 # Remark: I experienced that the range of rocket features (ppv and max of convolved kernels accross time series) can be quite large and can be
 # different for one kernel and for an other. Hence, I decided to renormalize each rocket feature
 
-norm_rocket_features_file_path = os.path.join(save_data_folder_path, 'norm_rocket_features.pt')
+norm_rocket_features_file_path = os.path.join(save_data, 'norm_rocket_features.pt')
 torch.save(norm_rfeats, norm_rocket_features_file_path)
 
 kernel_sizes = kernel_sizes[:ker_cut]
@@ -153,7 +159,7 @@ plot_roc_curve(fpr,
                label_colors,
                save_plot = True,
                show_plot = True,
-               save_filename = os.path.join(save_results_folder_path,
+               save_filename = os.path.join(save_dir,
                                             'rocket_classifier',
                                             'rocket_classifier_roc.jpeg'))
 

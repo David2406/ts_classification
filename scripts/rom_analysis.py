@@ -1,22 +1,33 @@
 import numpy as np
 import os
 import torch
+from src.config import init_config_options
 from src.reduced_basis import ReducedBasis
 from src.plot_reduced_basis import plot_cumulated_variance, plot_rb_leads
 
+###########################################################################
+##################### CONFIG PARAMETER LOADING ############################
+###########################################################################
+
+conf, work_dir, save_dir = init_config_options(config_file_path = './configs/rom_analysis.json')
+save_data = conf['save_data']
 
 ###############################################################################
 ##################### DATA LOADING & PREPROCESSING ############################
 ###############################################################################
 
-save_results_folder_path = '/home/david/Dev/volta/saved_results/'
-save_data_folder_path = '/home/david/Dev/volta/saved_data/'
+nb_leads = 12
+filt_norm_recds = torch.load(os.path.join(save_data,
+                                          'filt_norm_recds.pt'),
+                             weights_only = True).numpy()
 
-X = torch.load(os.path.join(save_data_folder_path,
-                            'patient_average_embeddings.pt'),
-               weights_only = True).numpy()
+filt_norm_recds = np.split(filt_norm_recds,
+                           indices_or_sections = nb_leads,
+                           axis = 1)
 
-time_ts = np.load(os.path.join(save_data_folder_path, 'time_ts.npy'))
+X = np.concatenate(filt_norm_recds, axis = 0)
+
+time_ts = np.load(os.path.join(save_data, 'time_ts.npy'))
 
 ###############################################################################
 ##################### REDUCED ORDER MODEL ANALYSIS ############################
@@ -52,7 +63,7 @@ plot_cumulated_variance(base = patient_rb,
                         plot_style = 'o',
                         grid = True,
                         fig_size = (10, 8),
-                        save_filename = os.path.join(save_results_folder_path,
+                        save_filename = os.path.join(save_dir,
                                                      'rom_analysis',
                                                      'rom_cumulated_variance.jpeg'))
 
@@ -63,7 +74,7 @@ plot_cumulated_variance(base = patient_rb,
 patient_reduced_coords = patient_rb.reduced_coordinates(field = X,
                                                         modes = nb_modes)
 
-patient_rc_file_path = os.path.join(save_data_folder_path, 'patient_reduced_coords.npy')
+patient_rc_file_path = os.path.join(save_data, 'patient_reduced_coords.npy')
 np.save(patient_rc_file_path, patient_reduced_coords)
 
 # Saving the patient reduced coordinates for the "naive classifier" approach (see scripts/simple_classifer.py)
