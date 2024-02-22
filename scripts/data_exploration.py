@@ -1,45 +1,50 @@
 import pandas as pd
 import numpy as np
-import pickle
 import os
+from src.config import init_config_options
 from src.preprocessing import load_ludb_records, load_patient_df, rhy_mapping, pivot_ecg_records, norm_ecgs
-from src.plot import plot_ecg_ts, plot_by_group, plot_ecg_ts_by_grp
+from src.plot import plot_ecg_ts, plot_ecg_ts_by_grp
 import matplotlib.pyplot as plt
 from matplotlib import colormaps as cm
-cmap = cm.get_cmap('Spectral')
 from matplotlib import colors as mcolors
+
+###########################################################################
+##################### CONFIG PARAMETER LOADING ############################
+###########################################################################
+
+conf, work_dir, save_dir = init_config_options(config_file_path = './configs/data_exploration.json')
+save_data = conf['save_data']
+cmap = cm.get_cmap('Spectral')
 
 ###############################################################################
 ##################### DATA LOADING & PREPROCESSING ############################
 ###############################################################################
 
-save_results_folder_path = '/home/david/Dev/volta/saved_results/'
-save_data_folder_path = '/home/david/Dev/volta/saved_data/'
-
-RECDS = load_ludb_records()
-PATIENTS = load_patient_df(rhy_mapping = rhy_mapping)
+RECDS = load_ludb_records(ecg_folder_path = conf['ecg_folder_path'])
+PATIENTS = load_patient_df(patient_file_path = conf['patient_file_path'],
+                           rhy_mapping = rhy_mapping)
 
 RECDS = pd.merge(RECDS,
                  PATIENTS[['id', 'Age', 'gAge', 'rhy_grp']],
                  on = ['id'],
                  how = 'left')
 
-RECDS.to_pickle(os.path.join(save_data_folder_path, 'RECDS.pkl'))
-PATIENTS.to_pickle(os.path.join(save_data_folder_path, 'PATIENTS.pkl'))
+RECDS.to_pickle(os.path.join(save_data, 'RECDS.pkl'))
+PATIENTS.to_pickle(os.path.join(save_data, 'PATIENTS.pkl'))
 
 time_ts = RECDS[['time']].drop_duplicates().to_numpy()
-np.save(os.path.join(save_data_folder_path, 'time_ts.npy'), time_ts)
+np.save(os.path.join(save_data, 'time_ts.npy'), time_ts)
 
 P_RECDS, ECG_COL_MAP = pivot_ecg_records(RECDS,
                                          PATIENTS[['id', 'rhy_grp', 'Rhythms', 'Age', 'gAge']],
-                                         save_outputs = False,
-                                         pivot_recds_file_path = os.path.join(save_data_folder_path, 'P_RECDS.pkl'),
-                                         ecg_col_map_file_path = os.path.join(save_data_folder_path, 'ECG_COL_MAP.pkl'))
+                                         save_outputs = True,
+                                         pivot_recds_file_path = os.path.join(save_data, 'P_RECDS.pkl'),
+                                         ecg_col_map_file_path = os.path.join(save_data, 'ECG_COL_MAP.pkl'))
 
 
 norm_recds, ts_mean_recds, ts_std_recds = norm_ecgs(P_RECDS,
-                                                    save_outputs = False,
-                                                    norm_ecg_file_path = os.path.join(save_data_folder_path, 'norm_recds.npy'))
+                                                    save_outputs = True,
+                                                    norm_ecg_file_path = os.path.join(save_data, 'norm_recds.npy'))
 
 
 #####################################################################
@@ -52,7 +57,7 @@ n_bins = 20
 x_label = 'Age'
 y_label = 'Frequency'
 
-save_filename = os.path.join(save_results_folder_path, 'visualization', 'age_hist.jpeg')
+save_filename = os.path.join(save_dir, 'visualization', 'age_hist.jpeg')
 fig, ax = plt.subplots()
 ax = PATIENTS.Age.plot(kind = 'hist',
                        stacked = True,
@@ -66,7 +71,7 @@ plt.close()
 
 # Remarks: the median age of the patient dataset is 56 years old
 
-save_filename = os.path.join(save_results_folder_path, 'visualization', 'age_rhy_hist.jpeg')
+save_filename = os.path.join(save_dir, 'visualization', 'age_rhy_hist.jpeg')
 fig, ax = plt.subplots()
 ax = PATIENTS[['Age', 'rhy_grp']].pivot(columns = 'rhy_grp').Age.plot(kind = 'hist',
                                                                       stacked = True,

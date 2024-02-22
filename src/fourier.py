@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
+from src.utils import grid_projection_1D
 from scipy.fft import fft, fftfreq
 from __init__ import volta_logger
 
@@ -133,3 +135,104 @@ def filter_wt_frequency(ECG_COL_MAP,
         torch.save(filtered_records, filt_recds_file_path)
 
     return filtered_records
+
+
+def build_fourier_df(ecg_freqs,
+                     fft_modes_ampl,
+                     lead_names,
+                     PATIENTS,
+                     nb_leads = 12,
+                     freq_grid_step = 10.,
+                     save_outputs = False,
+                     fourier_info_file_path = './FOURIER_INFOS.pkl',
+                     agg_fourier_file_path = './AGG_FOURIER.pkl',
+                     delete_tables = True,
+                     logger = volta_logger):
+
+    nb_patients = len(PATIENTS)
+    flat_modes_ampl = fft_modes_ampl.flatten(order = 'F')
+    freqs = np.tile(ecg_freqs, nb_patients * nb_leads)
+    leads = np.repeat(lead_names, repeats = len(ecg_freqs) * nb_patients)
+    patient_ids = np.tile(np.repeat(np.arange(1, 201, dtype = int), repeats = len(ecg_freqs)), nb_leads)
+
+    logger.info('Building the Fourier frequencies / mode amplitudes table')
+    fourier_data = np.stack([patient_ids, leads, freqs, flat_modes_ampl], axis = 1)
+
+    FOURIER = pd.DataFrame(data = fourier_data,
+                           columns = ['id', 'lead', 'freq', 'mode_ampl']).astype({'id': int})
+
+    logger.info('Grouping frequencies by block of %d Hz', int(freq_grid_step))
+    FOURIER['gfreq'] = FOURIER['freq'].apply(lambda x: grid_projection_1D(x,
+                                                                          x_origin = 0.,
+                                                                          grid_step = freq_grid_step))
+    FOURIER = FOURIER.astype({'gfreq': int})
+
+    if save_outputs:
+        FOURIER.to_pickle(fourier_info_file_path)
+
+    logger.info('Building the aggregated Fourier table, group vars are %s', str(['id', 'lead', 'gfreq']))
+    AGG_FOURIER = FOURIER.groupby(['id', 'lead', 'gfreq'],
+                                  as_index = False)['mode_ampl'].mean()
+    if delete_tables:
+        logger.info('Removing FOURIER table from local variables to save memory')
+        del FOURIER
+
+    AGG_FOURIER = pd.merge(AGG_FOURIER, PATIENTS, on = ['id'], how = 'left')
+    AGG_FOURIER = AGG_FOURIER.groupby(['lead', 'gfreq', 'rhy_grp'],
+                                      as_index = False)['mode_ampl'].mean()
+
+    if save_outputs:
+        AGG_FOURIER.to_pickle(agg_fourier_file_path)
+
+    if delete_tables:
+        return AGG_FOURIER
+
+    return FOURIER, AGG_FOURIER
+
+
+def plot_fourier_freq_hist(LEAD_AGG_FOURIER,
+                           lead_var = 'lead',
+                           width = 0.15,
+                           save_plot = False,
+                           return_axis = False,
+                           show_plot = True,
+                           save_filename = "./fourier_hist_avr.jpg"):
+
+    lead_name = LEAD_AGG_FOURIER.iloc[0][lead_var]
+    LF = LEAD_AGG_FOURIER.pivot(index = ['gfreq'],
+                                values = ['mode_ampl'],
+                                columns = 'rhy_grp')
+
+    LF.columns = [lead for _, lead in LF.columns]
+    lf_info = LF.to_dict()
+    gfreqs = np.array(LF.index)
+    x = np.arange(len(gfreqs))
+
+    fig, ax = plt.subplots()
+
+    multiplier = 0.
+
+    for rhy_grp, ampl_hist_info in lf_info.items():
+        offset = width * multiplier
+        rects = ax.bar(x + offset, [ampl for ampl in ampl_hist_info.values()],
+                       width,
+                       label = rhy_grp)
+        multiplier += 1
+
+    ax.set_xlabel('Frequencies (Hz)')
+    ax.set_ylabel('Mean of Fourier mode amplitude')
+    ax.set_xticks(x + width, gfreqs)
+    ax.xaxis.grid(True, which = 'major')
+    ax.yaxis.grid(True, which = 'major')
+    ax.set_title('Fourier freqencies histogram, lead : {}'.format(lead_name))
+    ax.legend(loc = 'upper right', ncols = 3)
+
+    if show_plot:
+        plt.show()
+    if save_plot:
+        fig.savefig(save_filename)
+
+    if return_axis:
+        return fig, ax
+    else:
+        plt.close()

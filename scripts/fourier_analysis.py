@@ -1,20 +1,28 @@
 import pandas as pd
 import numpy as np
 import os
+from src.config import init_config_options
 import matplotlib.pyplot as plt
 from src.plot import plot_fourier_ecg, rhy_color_mapping, rhy_label_mapping
-from src.fourier import comp_fourier_spectrums, lead_cut_frequencies, filter_wt_frequency
+from src.fourier import comp_fourier_spectrums, lead_cut_frequencies, filter_wt_frequency, build_fourier_df, plot_fourier_freq_hist
+
+
+###########################################################################
+##################### CONFIG PARAMETER LOADING ############################
+###########################################################################
+
+conf, work_dir, save_dir = init_config_options(config_file_path = './configs/data_exploration.json')
+save_data = conf['save_data']
 
 ###############################################################################
 ##################### DATA LOADING & PREPROCESSING ############################
 ###############################################################################
 
-save_results_folder_path = '/home/david/Dev/volta/saved_results/'
-save_data_folder_path = '/home/david/Dev/volta/saved_data/'
-
-ECG_COL_MAP = pd.read_pickle(os.path.join(save_data_folder_path, 'ECG_COL_MAP.pkl'))
-norm_recds = np.load(os.path.join(save_data_folder_path, 'norm_ecg.npy'))
-time_ts = np.load(os.path.join(save_data_folder_path, 'time_ts.npy'))
+ECG_COL_MAP = pd.read_pickle(os.path.join(save_data, 'ECG_COL_MAP.pkl'))
+lead_names = np.array(ECG_COL_MAP['lead'].unique())
+PATIENTS = ECG_COL_MAP[['id', 'rhy_grp', 'Rhythms', 'Age', 'gAge']].drop_duplicates()
+norm_recds = np.load(os.path.join(save_data, 'norm_recds.npy'))
+time_ts = np.load(os.path.join(save_data, 'time_ts.npy'))
 
 nb_pts = 5000
 time_step = 1 / 500
@@ -23,21 +31,22 @@ ecg_freqs, ecg_ks, fft_recds, fft_modes_ampl = comp_fourier_spectrums(norm_recds
                                                                       nb_sample_pts = nb_pts,
                                                                       time_step = time_step,
                                                                       freq_bounds = None,
-                                                                      save_outputs = False,
-                                                                      fourier_freqs_file_path = os.path.join(save_data_folder_path,
+                                                                      save_outputs = True,
+                                                                      fourier_freqs_file_path = os.path.join(save_data,
                                                                                                              'ecg_freqs.npy'),
-                                                                      fourier_ks_file_path = os.path.join(save_data_folder_path,
+                                                                      fourier_ks_file_path = os.path.join(save_data,
                                                                                                           'ecg_ks.npy'),
-                                                                      fourier_transform_file_path = os.path.join(save_data_folder_path,
+                                                                      fourier_transform_file_path = os.path.join(save_data,
                                                                                                                  'fft_recds.npy'),
-                                                                      fourier_modes_ampl_file_path = os.path.join(save_data_folder_path,
+                                                                      fourier_modes_ampl_file_path = os.path.join(save_data,
                                                                                                                   'fft_modes_ampl.npy'))
+del norm_recds
 
 ###################################################################
 ##################### FOURIER ANALYSIS ############################
 ###################################################################
 
-save_filename_pattern = os.path.join(save_results_folder_path,
+save_filename_pattern = os.path.join(save_dir,
                                      'fourier_analysis',
                                      'fourier_spretum_lead_{}.jpeg')
 
@@ -64,13 +73,45 @@ for lead, ecg_info_df in ECG_COL_MAP.groupby(['lead']):
 # The cutting frequency criterion is the following: consider all modes whose amplitude > factor x (maximal amplitude),
 # the cutting frequency is the highest frequency that meets this criterion. This criterion has 1 hyperparameter "factor" which here is set to 5%.
 
+####################################################################################
+##################### FOURIER MODE AMPLITUDE HISTOGRAMS ############################
+####################################################################################
+
+AGG_FOURIER = build_fourier_df(ecg_freqs,
+                               fft_modes_ampl,
+                               lead_names,
+                               PATIENTS,
+                               nb_leads = 12,
+                               freq_grid_step = 10.,
+                               save_outputs = False,
+                               delete_tables = True,
+                               fourier_info_file_path = os.path.join(save_data, 'FOURIER_INFOS.pkl'),
+                               agg_fourier_file_path = os.path.join(save_data, 'AGG_FOURIER.pkl'))
+
+save_filename = 'fourier_hist_{}.jpeg'
+
+for lead_name in lead_names:
+    plot_fourier_freq_hist(LEAD_AGG_FOURIER = AGG_FOURIER[AGG_FOURIER.lead == lead_name],
+                           lead_var = 'lead',
+                           width = 0.15,
+                           save_plot = True,
+                           show_plot = True,
+                           save_filename = os.path.join(save_dir, save_filename.format(lead_name)))
+
+# Remarks: Fourier frequencies histograms whose weight is proportional to the average mode amplitude (for a given frequency, a given rhythm and a given lead)
+# Remarks: These plots are just an aggregated vision of the previous plots
+
+##############################################################################
+##################### FOURIER CUTTING FREQUENCIES ############################
+##############################################################################
+
 CUT_FREQS = lead_cut_frequencies(ECG_COL_MAP,
                                  time_step,
                                  ecg_freqs,
                                  fft_modes_ampl,
                                  ampl_factor = 0.05,
-                                 save_outputs = False,
-                                 cut_freqs_file_path = os.path.join(save_data_folder_path,
+                                 save_outputs = True,
+                                 cut_freqs_file_path = os.path.join(save_data,
                                                                     'CUT_FREQS.pkl'))
 
 # Remarks: with an amplitude factor of 5%, the median size of the filtering moving average window is 11 points
@@ -82,9 +123,9 @@ filt_recds = filter_wt_frequency(ECG_COL_MAP,
                                  CUT_FREQS,
                                  norm_recds,
                                  nb_sample_pts = nb_pts,
-                                 save_outputs = False,
-                                 filt_recds_file_path = os.path.join(save_data_folder_path,
-                                                                     'patient_average_embeddings.pt'))
+                                 save_outputs = True,
+                                 filt_recds_file_path = os.path.join(save_data,
+                                                                     'filt_norm_recds.pt'))
 
 ##############################################################################################################
 #################### VISUALISING THE EFFECT OF 1D MOVING AVERAGE FILTERING ###################################

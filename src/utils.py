@@ -18,3 +18,12 @@ def one_vs_rest_label(rhy_grp,
         return 1
     else:
         return 0
+
+
+def replace_words(base_text,
+                  device_values):
+
+    for key, val in device_values.items():
+        base_text = base_text.replace(key, val)
+
+    return base_text

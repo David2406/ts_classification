@@ -1,0 +1,6 @@
+{
+    "ecg_folder_path": "/home/david/Dev/volta/ludb_1.0.1/data/",
+    "patient_file_path": "/home/david/Dev/volta/ludb_1.0.1/ludb.csv",
+    "save_data": "/home/david/Dev/ts_classification/saved_data/",
+    "save_dir": "/home/david/Dev/ts_classification/saved_results/"
+}
